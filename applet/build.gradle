@@ -41,7 +41,7 @@ repositories {
 
 // Dependencies for your project
 dependencies {
-    jcardsim 'com.klinec:jcardsim:3.0.5.11'
+    jcardsim 'com.klinec:jcardsim:3.0.6.0'
 
     testImplementation 'org.testng:testng:6.1.1'
     testImplementation 'org.slf4j:slf4j-api:1.7.33'
