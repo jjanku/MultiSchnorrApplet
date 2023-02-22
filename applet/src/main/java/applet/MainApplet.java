@@ -1,46 +1,43 @@
 package applet;
 
+import applet.jcmathlib.*;
 import javacard.framework.*;
-import javacard.security.RandomData;
 
-public class MainApplet extends Applet implements MultiSelectable
-{
-    private static final short BUFFER_SIZE = 32;
+public class MainApplet extends Applet implements MultiSelectable {
+    private ECConfig ecc;
+    private ECCurve curve;
 
-    private byte[] tmpBuffer = JCSystem.makeTransientByteArray(BUFFER_SIZE, JCSystem.CLEAR_ON_DESELECT);
-    private RandomData random;
+    private boolean initialized = false;
 
-    public static void install(byte[] bArray, short bOffset, byte bLength)
-    {
-        new MainApplet(bArray, bOffset, bLength);
+    public static void install(byte[] bArray, short bOffset, byte bLength) {
+        new MainApplet(bArray, bOffset, bLength).register();
     }
 
-    public MainApplet(byte[] buffer, short offset, byte length)
-    {
-        random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
-        register();
+    public MainApplet(byte[] buffer, short offset, byte length) {
+        OperationSupport support = OperationSupport.getInstance();
+        support.setCard(OperationSupport.SIMULATOR);
+        if (!support.DEFERRED_INITIALIZATION)
+            initialize();
     }
 
-    public void process(APDU apdu)
-    {
-        byte[] apduBuffer = apdu.getBuffer();
-        byte cla = apduBuffer[ISO7816.OFFSET_CLA];
-        byte ins = apduBuffer[ISO7816.OFFSET_INS];
-        short lc = (short)apduBuffer[ISO7816.OFFSET_LC];
-        short p1 = (short)apduBuffer[ISO7816.OFFSET_P1];
-        short p2 = (short)apduBuffer[ISO7816.OFFSET_P2];
+    private void initialize() {
+        ecc = new ECConfig(SecP256k1.KEY_LENGTH);
+        curve = new ECCurve(false, SecP256k1.p, SecP256k1.a, SecP256k1.b,
+            SecP256k1.G, SecP256k1.r);
+        initialized = true;
+    }
 
-        random.generateData(tmpBuffer, (short) 0, BUFFER_SIZE);
-
-        Util.arrayCopyNonAtomic(tmpBuffer, (short)0, apduBuffer, (short)0, BUFFER_SIZE);
-        apdu.setOutgoingAndSend((short)0, BUFFER_SIZE);
+    public void process(APDU apdu) {
+        if (!initialized)
+            initialize();
     }
 
     public boolean select(boolean b) {
+        if (initialized)
+            ecc.refreshAfterReset();
         return true;
     }
 
     public void deselect(boolean b) {
-
     }
 }
