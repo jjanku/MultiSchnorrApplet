@@ -3,12 +3,21 @@ package applet;
 import applet.jcmathlib.*;
 import javacard.framework.*;
 import javacard.security.CryptoException;
+import javacard.security.RandomData;
+import javacard.security.MessageDigest;
 
 public class MainApplet extends Applet implements MultiSelectable {
+    private byte[] ram;
+    private RandomData rng;
+    private MessageDigest md;
+
     private ECConfig ecc;
     private ECCurve curve;
 
-    private boolean initialized = false;
+    private BigNat order, identityPriv, noncePriv, signature;
+    private ECPoint identityPub, noncePub, groupPub;
+
+    private boolean initialized = false, commited = false;
 
     public static void install(byte[] bArray, short bOffset, byte bLength) {
         new MainApplet(bArray, bOffset, bLength).register();
@@ -25,6 +34,27 @@ public class MainApplet extends Applet implements MultiSelectable {
         ecc = new ECConfig(SecP256k1.KEY_LENGTH);
         curve = new ECCurve(false, SecP256k1.p, SecP256k1.a, SecP256k1.b,
             SecP256k1.G, SecP256k1.r);
+
+        ram = JCSystem.makeTransientByteArray(curve.POINT_SIZE,
+            JCSystem.CLEAR_ON_DESELECT);
+        rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+        md = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
+
+        order = new BigNat(curve.r, ecc.rm);
+        identityPriv = new BigNat(order.length(),
+            JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
+        noncePriv = new BigNat(order.length(),
+            JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, ecc.rm);
+        signature = new BigNat(order.length(),
+            JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, ecc.rm);
+
+        identityPub = new ECPoint(curve, ecc.rm);
+        noncePub = new ECPoint(curve, ecc.rm);
+        groupPub = new ECPoint(curve, ecc.rm);
+
+        setRandomPoint(identityPriv, identityPub);
+        groupPub.copy(identityPub);
+
         initialized = true;
     }
 
@@ -42,6 +72,22 @@ public class MainApplet extends Applet implements MultiSelectable {
 
         try {
             switch (buf[ISO7816.OFFSET_INS]) {
+                case Protocol.INS_GET_IDENTITY:
+                    getIdentity(apdu);
+                    break;
+                case Protocol.INS_GET_GROUP:
+                    getGroup(apdu);
+                    break;
+                case Protocol.INS_DKGEN:
+                    dkgen(apdu);
+                    break;
+                case Protocol.INS_COMMIT:
+                    commit(apdu);
+                    break;
+                case Protocol.INS_SIGN:
+                    sign(apdu);
+                    break;
+
                 default:
                     ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
             }
@@ -84,5 +130,73 @@ public class MainApplet extends Applet implements MultiSelectable {
     }
 
     public void deselect(boolean b) {
+    }
+
+    private void setRandomPoint(BigNat scalar, ECPoint point) {
+        rng.generateData(ram, (short) 0, order.length());
+        scalar.from_byte_array(order.length(), (short) 0, ram, (short) 0);
+        point.setW(curve.G, (short) 0, curve.POINT_SIZE);
+        point.multiplication(scalar);
+    }
+
+    private void sendPoint(APDU apdu, ECPoint point) {
+        point.getW(apdu.getBuffer(), (short) 0);
+        apdu.setOutgoingAndSend((short) 0, curve.POINT_SIZE);
+    }
+
+    private void getIdentity(APDU apdu) {
+        sendPoint(apdu, identityPub);
+    }
+
+    private void getGroup(APDU apdu) {
+        sendPoint(apdu, groupPub);
+    }
+
+    private void dkgen(APDU apdu) {
+        short dataLen = apdu.setIncomingAndReceive();
+        if (dataLen != curve.POINT_SIZE)
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+
+        groupPub.setW(apdu.getBuffer(), ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
+        groupPub.multiplication(identityPriv);
+
+        getIdentity(apdu);
+    }
+
+    private void commit(APDU apdu) {
+        setRandomPoint(noncePriv, noncePub);
+        commited = true;
+
+        sendPoint(apdu, noncePub);
+    }
+
+    private void sign(APDU apdu) {
+        if (!commited)
+            ISOException.throwIt(Protocol.ERR_COMMIT);
+
+        short dataLen = apdu.setIncomingAndReceive();
+        if (dataLen != (short) (curve.POINT_SIZE + Protocol.MSG_LEN))
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        byte[] buf = apdu.getBuffer();
+
+        // check the group nonce is a valid point on the curve
+        noncePub.setW(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
+
+        md.reset();
+        groupPub.getW(ram, (short) 0);
+        md.update(ram, (short) 0, curve.POINT_SIZE);
+        md.update(buf, (short) (ISO7816.OFFSET_CDATA + curve.POINT_SIZE),
+            Protocol.MSG_LEN);
+        short hashLen = md.doFinal(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE,
+            ram, (short) 0);
+
+        signature.erase();
+        signature.from_byte_array(hashLen, (short) 0, ram, (short) 0);
+        signature.mod_mult(signature, identityPriv, order);
+        signature.mod_add(noncePriv, order);
+        commited = false;
+
+        signature.copy_to_buffer(buf, (short) 0);
+        apdu.setOutgoingAndSend((short) 0, order.length());
     }
 }
