@@ -5,11 +5,13 @@ import javacard.framework.*;
 import javacard.security.CryptoException;
 import javacard.security.RandomData;
 import javacard.security.MessageDigest;
+import javacard.security.Signature;
 
 public class MainApplet extends Applet implements MultiSelectable {
     private byte[] ram;
     private RandomData rng;
     private MessageDigest md;
+    private Signature ecdsa;
 
     private ECConfig ecc;
     private ECCurve curve;
@@ -39,6 +41,7 @@ public class MainApplet extends Applet implements MultiSelectable {
             JCSystem.CLEAR_ON_DESELECT);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         md = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
+        ecdsa = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
         order = new BigNat(curve.r, ecc.rm);
         identityPriv = new BigNat(order.length(),
@@ -153,14 +156,32 @@ public class MainApplet extends Applet implements MultiSelectable {
     }
 
     private void dkgen(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
         short dataLen = apdu.setIncomingAndReceive();
-        if (dataLen != curve.POINT_SIZE)
+        if (dataLen < curve.POINT_SIZE)
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 
-        groupPub.setW(apdu.getBuffer(), ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
+        groupPub.setW(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
+        ecdsa.init(groupPub.asPublicKey(), Signature.MODE_VERIFY);
+        boolean verifies = ecdsa.verify(
+            buf,
+            ISO7816.OFFSET_CDATA,
+            curve.POINT_SIZE,
+            buf,
+            (short) (ISO7816.OFFSET_CDATA + curve.POINT_SIZE),
+            (short) (dataLen - curve.POINT_SIZE)
+        );
+        if (!verifies)
+            ISOException.throwIt(Protocol.ERR_POP);
+
         groupPub.multiplication(identityPriv);
 
-        getIdentity(apdu);
+        identityPub.getW(buf, (short) 0);
+        // TODO: store it in an array?
+        ecdsa.init(curve.bignatAsPrivateKey(identityPriv), Signature.MODE_SIGN);
+        short sigLen = ecdsa.sign(buf, (short) 0, curve.POINT_SIZE,
+            buf, curve.POINT_SIZE);
+        apdu.setOutgoingAndSend((short) 0, (short) (curve.POINT_SIZE + sigLen));
     }
 
     private void commit(APDU apdu) {

@@ -22,12 +22,14 @@ public class AppletConnection {
     public final ECNamedCurveParameterSpec params;
     public final ECCurve curve;
     public final ECPoint G;
+    private final int pointLen;
 
     public AppletConnection(CardManager card) {
         this.card = card;
         params = ECNamedCurveTable.getParameterSpec("secp256k1");
         curve = params.getCurve();
         G = params.getG();
+        pointLen = G.getEncoded(false).length;
     }
 
     public void close() throws CardException {
@@ -56,9 +58,15 @@ public class AppletConnection {
         return curve.decodePoint(data);
     }
 
-    public ECPoint dkgen(ECPoint point) throws CardException {
-        byte[] data  = command(Protocol.INS_DKGEN, point.getEncoded(false));
-        return curve.decodePoint(data);
+    public PossessedKey dkgen(PossessedKey key) throws CardException {
+        byte[] data  = command(Protocol.INS_DKGEN,
+            concat(key.point.getEncoded(false), key.pop));
+        byte[] point = new byte[pointLen];
+        byte[] pop = new byte[data.length - pointLen];
+        ByteBuffer buf = ByteBuffer.wrap(data);
+        buf.get(point, 0, pointLen);
+        buf.get(pop);
+        return new PossessedKey(null, curve.decodePoint(point), pop);
     }
 
     public ECPoint commit() throws CardException {

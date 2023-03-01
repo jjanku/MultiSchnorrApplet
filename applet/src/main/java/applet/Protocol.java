@@ -9,7 +9,8 @@ public class Protocol {
     public static final byte INS_COMMIT = (byte) 0x04;
     public static final byte INS_SIGN = (byte) 0x05;
 
-    public static final short ERR_COMMIT = (short) 0xbad0;
+    public static final short ERR_POP = (short) 0xbad0;
+    public static final short ERR_COMMIT = (short) 0xbad1;
 
     public static final short MSG_LEN = (short) 32;
 }
