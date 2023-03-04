@@ -3129,7 +3129,7 @@ public class jcmathlib {
          * @param outBufferOffset offset within output array
          * @return length of resulting value (in bytes)
          */
-        private short multXKA(BigNat scalar, byte[] outBuffer, short outBufferOffset) {
+        public short multXKA(BigNat scalar, byte[] outBuffer, short outBufferOffset) {
             byte[] pointBuffer = rm.POINT_ARRAY_A;
             // NOTE: potential problem on real cards (j2e) - when small scalar is used (e.g., BigNat.TWO), operation sometimes freezes
             curve.disposable_priv.setS(scalar.as_byte_array(), (short) 0, scalar.length());

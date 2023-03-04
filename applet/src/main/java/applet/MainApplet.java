@@ -185,10 +185,26 @@ public class MainApplet extends Applet implements MultiSelectable {
     }
 
     private void commit(APDU apdu) {
-        setRandomPoint(noncePriv, noncePub);
+        byte[] buf = apdu.getBuffer();
+        boolean prob = buf[ISO7816.OFFSET_P1] != 0;
+
+        rng.generateData(ram, (short) 0, order.length());
+        noncePriv.from_byte_array(order.length(), (short) 0, ram, (short) 0);
+        noncePub.setW(curve.G, (short) 0, curve.POINT_SIZE);
+        short len;
+        if (!OperationSupport.getInstance().EC_HW_XY && prob) {
+            noncePub.multXKA(noncePriv, buf, (short) 1);
+            // guess the y-coordinate, 1/2 success probability
+            buf[0] = 0x02;
+            len = (short) (curve.COORD_SIZE + 1);
+        } else {
+            noncePub.multiplication(noncePriv);
+            noncePub.getW(buf, (short) 0);
+            len = curve.POINT_SIZE;
+        }
         commited = true;
 
-        sendPoint(apdu, noncePub);
+        apdu.setOutgoingAndSend((short) 0, len);
     }
 
     private void sign(APDU apdu) {
