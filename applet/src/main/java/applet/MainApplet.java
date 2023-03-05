@@ -47,7 +47,7 @@ public class MainApplet extends Applet implements MultiSelectable {
         identityPriv = new BigNat(order.length(),
             JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
         noncePriv = new BigNat(order.length(),
-            JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, ecc.rm);
+            JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
         signature = new BigNat(order.length(),
             JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, ecc.rm);
 
@@ -88,7 +88,10 @@ public class MainApplet extends Applet implements MultiSelectable {
                     commit(apdu);
                     break;
                 case Protocol.INS_SIGN:
-                    sign(apdu);
+                    sign(apdu, false);
+                    break;
+                case Protocol.INS_SIGN_COMMIT:
+                    sign(apdu, true);
                     break;
 
                 default:
@@ -184,30 +187,33 @@ public class MainApplet extends Applet implements MultiSelectable {
         apdu.setOutgoingAndSend((short) 0, (short) (curve.POINT_SIZE + sigLen));
     }
 
-    private void commit(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
-        boolean prob = buf[ISO7816.OFFSET_P1] != 0;
-
+    private short commit(byte[] buf, short off, boolean prob) {
         rng.generateData(ram, (short) 0, order.length());
         noncePriv.from_byte_array(order.length(), (short) 0, ram, (short) 0);
         noncePub.setW(curve.G, (short) 0, curve.POINT_SIZE);
         short len;
         if (!OperationSupport.getInstance().EC_HW_XY && prob) {
-            noncePub.multXKA(noncePriv, buf, (short) 1);
+            noncePub.multXKA(noncePriv, buf, (short) (off + 1));
             // guess the y-coordinate, 1/2 success probability
-            buf[0] = 0x02;
+            buf[off] = 0x02;
             len = (short) (curve.COORD_SIZE + 1);
         } else {
             noncePub.multiplication(noncePriv);
-            noncePub.getW(buf, (short) 0);
+            noncePub.getW(buf, off);
             len = curve.POINT_SIZE;
         }
         commited = true;
+        return len;
+    }
 
+    private void commit(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        boolean prob = buf[ISO7816.OFFSET_P1] != 0;
+        short len = commit(buf, (short) 0, prob);
         apdu.setOutgoingAndSend((short) 0, len);
     }
 
-    private void sign(APDU apdu) {
+    private void sign(APDU apdu, boolean commit) {
         if (!commited)
             ISOException.throwIt(Protocol.ERR_COMMIT);
 
@@ -215,6 +221,7 @@ public class MainApplet extends Applet implements MultiSelectable {
         if (dataLen != (short) (curve.POINT_SIZE + Protocol.MSG_LEN))
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         byte[] buf = apdu.getBuffer();
+        boolean prob = buf[ISO7816.OFFSET_P1] != 0;
 
         // check the group nonce is a valid point on the curve
         noncePub.setW(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
@@ -234,6 +241,9 @@ public class MainApplet extends Applet implements MultiSelectable {
         commited = false;
 
         signature.copy_to_buffer(buf, (short) 0);
-        apdu.setOutgoingAndSend((short) 0, order.length());
+        short len = order.length();
+        if (commit)
+            len += commit(buf, len, prob);
+        apdu.setOutgoingAndSend((short) 0, len);
     }
 }

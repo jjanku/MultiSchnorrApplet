@@ -8,6 +8,7 @@ public class Protocol {
     public static final byte INS_DKGEN = (byte) 0x02;
     public static final byte INS_COMMIT = (byte) 0x04;
     public static final byte INS_SIGN = (byte) 0x05;
+    public static final byte INS_SIGN_COMMIT = (byte) 0x06;
 
     public static final short ERR_POP = (short) 0xbad0;
     public static final short ERR_COMMIT = (short) 0xbad1;
