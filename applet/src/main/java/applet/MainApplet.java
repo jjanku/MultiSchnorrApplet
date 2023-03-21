@@ -181,7 +181,10 @@ public class MainApplet extends Applet implements MultiSelectable {
 
         identityPub.getW(buf, (short) 0);
         // TODO: store it in an array?
-        ecdsa.init(curve.bignatAsPrivateKey(identityPriv), Signature.MODE_SIGN);
+        curve.disposable_priv.setG(curve.G, (short) 0, curve.POINT_SIZE);
+        curve.disposable_priv.setS(identityPriv.as_byte_array(),
+            (short) 0, identityPriv.length());
+        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
         short sigLen = ecdsa.sign(buf, (short) 0, curve.POINT_SIZE,
             buf, curve.POINT_SIZE);
         apdu.setOutgoingAndSend((short) 0, (short) (curve.POINT_SIZE + sigLen));

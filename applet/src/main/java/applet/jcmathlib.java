@@ -436,14 +436,20 @@ public class jcmathlib {
             y1.clone(ySq);
             y1.sqrt_FP(curve.pBN);
 
+            // Prepare for SignVerify
+            getW(pointBuffer, (short) 0);
+            curve.disposable_priv.setG(pointBuffer, (short) 0, curve.POINT_SIZE);
+            curve.disposable_pub.setG(pointBuffer, (short) 0, curve.POINT_SIZE);
+
             // Construct public key with <x, y_1>
             pointBuffer[0] = 0x04;
             x.prepend_zeros(curve.COORD_SIZE, pointBuffer, (short) 1);
             y1.prepend_zeros(curve.COORD_SIZE, pointBuffer, (short) (1 + curve.COORD_SIZE));
-            setW(pointBuffer, (short) 0, curve.POINT_SIZE); //So that we can convert to pub key
 
             // Check if public point <x, y_1> corresponds to the "secret" (i.e., our scalar)
-            if (!SignVerifyECDSA(curve.bignatAsPrivateKey(scalar), asPublicKey(), rm.verifyEcdsa, resultBuffer)) { // If verification fails, then pick the <x, y_2>
+            curve.disposable_priv.setS(scalar.as_byte_array(), (short) 0, scalar.length());
+            curve.disposable_pub.setW(pointBuffer, (short) 0, curve.POINT_SIZE);
+            if (!SignVerifyECDSA(curve.disposable_priv, curve.disposable_pub, rm.verifyEcdsa, resultBuffer)) { // If verification fails, then pick the <x, y_2>
                 y2.clone(curve.pBN); // y_2 = p - y_1
                 y2.mod_sub(y1, curve.pBN);
                 y2.copy_to_buffer(pointBuffer, (short) (1 + curve.COORD_SIZE));
@@ -805,6 +811,7 @@ public class jcmathlib {
 
         public KeyPair disposable_pair;
         public ECPrivateKey disposable_priv;
+        public ECPublicKey disposable_pub;
 
 
 
@@ -857,6 +864,7 @@ public class jcmathlib {
 
             this.disposable_pair = this.newKeyPair(null);
             this.disposable_priv = (ECPrivateKey) this.disposable_pair.getPrivate();
+            this.disposable_pub = (ECPublicKey) this.disposable_pair.getPublic();
         }
 
         /**
