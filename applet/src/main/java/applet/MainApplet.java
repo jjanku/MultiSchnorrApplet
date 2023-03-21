@@ -234,14 +234,15 @@ public class MainApplet extends Applet implements MultiSelectable {
         short hashLen = md.doFinal(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE,
             ram, (short) 0);
 
-        signature.erase();
+        // assert hashLen <= order.length()
+        signature.set_size(hashLen);
         signature.from_byte_array(hashLen, (short) 0, ram, (short) 0);
         signature.mod_mult(signature, identityPriv, order);
         signature.mod_add(noncePriv, order);
         commited = false;
 
-        signature.copy_to_buffer(buf, (short) 0);
         short len = order.length();
+        signature.prepend_zeros(len, buf, (short) 0);
         if (commit)
             len += commit(buf, len, prob);
         apdu.setOutgoingAndSend((short) 0, len);
