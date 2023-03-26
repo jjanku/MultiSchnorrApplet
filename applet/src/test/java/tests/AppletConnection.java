@@ -39,6 +39,10 @@ public class AppletConnection {
         return resp.getData();
     }
 
+    public long getCommandTimeNano() {
+        return card.getLastTransmitTimeNano();
+    }
+
     public ECPoint getIdentity() throws CardException {
         byte[] data = command(Protocol.INS_GET_IDENTITY, 0, null);
         return decodePoint(data);
