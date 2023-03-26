@@ -62,7 +62,7 @@ public class AppletConnection {
         ByteBuffer buf = ByteBuffer.wrap(data);
         buf.get(point, 0, pointEnc.length);
         buf.get(pop);
-        return new PossessedKey(null, decodePoint(point), pop);
+        return new PossessedKey(decodePoint(point), pop);
     }
 
     public ECPoint commit() throws CardException {

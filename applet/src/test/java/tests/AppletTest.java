@@ -5,28 +5,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import applet.Protocol;
 import cz.muni.fi.crocs.rcard.client.CardType;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.jce.spec.ECPrivateKeySpec;
-import org.bouncycastle.jce.spec.ECPublicKeySpec;
 import org.bouncycastle.math.ec.ECPoint;
-import org.bouncycastle.util.BigIntegers;
 import org.junit.jupiter.api.*;
 
 import java.math.BigInteger;
-import java.security.KeyFactory;
 import java.security.MessageDigest;
-import java.security.PrivateKey;
-import java.security.Provider;
-import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.security.Signature;
 
 public class AppletTest extends BaseTest {
-    private final Provider bc = new BouncyCastleProvider();
     private final SecureRandom rng = new SecureRandom();
     private final MessageDigest md = MessageDigest.getInstance("SHA-256");
-    private final KeyFactory keyFactory = KeyFactory.getInstance("EC", bc);
-    private final Signature ecdsa = Signature.getInstance("SHA256withECDSA", bc);
     private AppletConnection app;
 
     public AppletTest() throws Exception {
@@ -45,36 +33,16 @@ public class AppletTest extends BaseTest {
         app = null;
     }
 
-    private PossessedKey generateKey() throws Exception {
-        BigInteger x = ECParams.randomMult();
-        ECPoint X = ECParams.G.multiply(x);
-
-        ECPrivateKeySpec keySpec = new ECPrivateKeySpec(x, ECParams.params);
-        PrivateKey priv = keyFactory.generatePrivate(keySpec);
-        ecdsa.initSign(priv);
-        ecdsa.update(X.getEncoded(false));
-        byte[] pop = ecdsa.sign();
-
-        return new PossessedKey(x, X, pop);
-    }
-
-    private boolean verifyKey(PossessedKey key) throws Exception {
-        ECPublicKeySpec keySpec = new ECPublicKeySpec(key.point, ECParams.params);
-        PublicKey pub = keyFactory.generatePublic(keySpec);
-        ecdsa.initVerify(pub);
-        ecdsa.update(key.point.getEncoded(false));
-        return ecdsa.verify(key.pop);
-    }
-
     @Test
     public void dkgen() throws  Exception {
-        PossessedKey pk2 = generateKey();
-        assertTrue(verifyKey(pk2));
+        BigInteger x2 = ECParams.randomMult();
+        PossessedKey pk2 = new PossessedKey(x2);
+        assertTrue(pk2.verify());
         PossessedKey pk1 = app.dkgen(pk2);
 
         assertEquals(pk1.point, app.getIdentity());
-        assertTrue(verifyKey(pk1));
-        ECPoint X = pk1.point.multiply(pk2.secret);
+        assertTrue(pk1.verify());
+        ECPoint X = pk1.point.multiply(x2);
         assertEquals(X, app.getGroup());
     }
 
@@ -84,7 +52,7 @@ public class AppletTest extends BaseTest {
         BigInteger s, c;
         byte[] msg, digest;
 
-        PossessedKey pk2 = generateKey();
+        PossessedKey pk2 = new PossessedKey(ECParams.randomMult());
         PossessedKey pk1 = app.dkgen(pk2);
         X = app.getGroup();
 
