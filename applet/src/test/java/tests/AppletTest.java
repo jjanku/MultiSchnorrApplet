@@ -45,20 +45,11 @@ public class AppletTest extends BaseTest {
         app = null;
     }
 
-    private BigInteger randomMult() {
-        return BigIntegers.createRandomInRange(
-            BigInteger.ONE, app.curve.getOrder(), rng);
-    }
-
-    private  ECPoint randomPoint() {
-        return app.G.multiply(randomMult());
-    }
-
     private PossessedKey generateKey() throws Exception {
-        BigInteger x = randomMult();
-        ECPoint X = app.G.multiply(x);
+        BigInteger x = ECParams.randomMult();
+        ECPoint X = ECParams.G.multiply(x);
 
-        ECPrivateKeySpec keySpec = new ECPrivateKeySpec(x, app.params);
+        ECPrivateKeySpec keySpec = new ECPrivateKeySpec(x, ECParams.params);
         PrivateKey priv = keyFactory.generatePrivate(keySpec);
         ecdsa.initSign(priv);
         ecdsa.update(X.getEncoded(false));
@@ -68,7 +59,7 @@ public class AppletTest extends BaseTest {
     }
 
     private boolean verifyKey(PossessedKey key) throws Exception {
-        ECPublicKeySpec keySpec = new ECPublicKeySpec(key.point, app.params);
+        ECPublicKeySpec keySpec = new ECPublicKeySpec(key.point, ECParams.params);
         PublicKey pub = keyFactory.generatePublic(keySpec);
         ecdsa.initVerify(pub);
         ecdsa.update(key.point.getEncoded(false));
@@ -100,23 +91,23 @@ public class AppletTest extends BaseTest {
         R1 = app.commit();
         msg = new byte[Protocol.MSG_LEN];
         rng.nextBytes(msg);
-        R = randomPoint();
+        R = ECParams.randomPoint();
         s = app.sign(R, msg);
 
         md.update(X.getEncoded(false));
         md.update(msg);
         digest = md.digest(R.getEncoded(false));
         c = new BigInteger(1, digest);
-        assertEquals(app.G.multiply(s), R1.add(pk1.point.multiply(c)));
+        assertEquals(ECParams.G.multiply(s), R1.add(pk1.point.multiply(c)));
     }
 
     @Test
     public void nonceReuse() throws Exception {
         byte[] msg = new byte[Protocol.MSG_LEN];
         app.commit();
-        app.sign(randomPoint(), msg);
+        app.sign(ECParams.randomPoint(), msg);
         IsoCardException e = assertThrows(IsoCardException.class,
-            () -> app.sign(randomPoint(), msg));
+            () -> app.sign(ECParams.randomPoint(), msg));
         assertEquals(e.status, Protocol.ERR_COMMIT);
     }
 }
