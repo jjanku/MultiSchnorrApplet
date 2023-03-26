@@ -56,7 +56,7 @@ public class AppletTest extends BaseTest {
         PossessedKey pk1 = app.dkgen(pk2);
         X = app.getGroup();
 
-        R1 = app.commit();
+        R1 = app.commit(false);
         msg = new byte[Protocol.MSG_LEN];
         rng.nextBytes(msg);
         R = ECParams.randomPoint();
@@ -72,7 +72,7 @@ public class AppletTest extends BaseTest {
     @Test
     public void nonceReuse() throws Exception {
         byte[] msg = new byte[Protocol.MSG_LEN];
-        app.commit();
+        app.commit(false);
         app.sign(ECParams.randomPoint(), msg);
         IsoCardException e = assertThrows(IsoCardException.class,
             () -> app.sign(ECParams.randomPoint(), msg));
