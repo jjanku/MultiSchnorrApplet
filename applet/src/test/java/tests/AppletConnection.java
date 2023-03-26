@@ -9,7 +9,6 @@ import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.BigIntegers;
 
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
 
 import cz.muni.fi.crocs.rcard.client.CardManager;
 
@@ -26,10 +25,6 @@ public class AppletConnection {
 
     public void close() throws CardException {
         card.disconnect(true);
-    }
-
-    private static byte[] concat(byte[] a, byte[] b) {
-        return ByteBuffer.allocate(a.length + b.length).put(a).put(b).array();
     }
 
     private static ECPoint decodePoint(byte[] data) {
@@ -60,13 +55,12 @@ public class AppletConnection {
 
     public PossessedKey dkgen(PossessedKey key) throws CardException {
         byte[] pointEnc = key.point.getEncoded(false);
-        byte[] data = command(Protocol.INS_DKGEN, 0, concat(pointEnc, key.pop));
-        byte[] point = new byte[pointEnc.length];
-        byte[] pop = new byte[data.length - pointEnc.length];
-        ByteBuffer buf = ByteBuffer.wrap(data);
-        buf.get(point, 0, pointEnc.length);
-        buf.get(pop);
-        return new PossessedKey(decodePoint(point), pop);
+        byte[] data = command(Protocol.INS_DKGEN, 0,
+            Arrays.concatenate(pointEnc, key.pop));
+        return new PossessedKey(
+            decodePoint(Arrays.copyOfRange(data, 0, pointEnc.length)),
+            Arrays.copyOfRange(data, pointEnc.length, data.length)
+        );
     }
 
     public ECPoint commit(boolean prob) throws CardException {
@@ -76,7 +70,7 @@ public class AppletConnection {
 
     public BigInteger sign(ECPoint nonce, byte[] message) throws CardException {
         byte[] data = command(Protocol.INS_SIGN, 0,
-            concat(nonce.getEncoded(false), message));
+            Arrays.concatenate(nonce.getEncoded(false), message));
         return new BigInteger(1, data);
     }
 
@@ -84,7 +78,7 @@ public class AppletConnection {
         ECPoint nonce, byte[] message, boolean prob
     ) throws CardException {
         byte[] data = command(Protocol.INS_SIGN_COMMIT, prob ? 1 : 0,
-            concat(nonce.getEncoded(false), message));
+            Arrays.concatenate(nonce.getEncoded(false), message));
         int sigLen = BigIntegers.getUnsignedByteLength(ECParams.order);
         return new ImmutablePair<>(
             new BigInteger(1, Arrays.copyOfRange(data, 0, sigLen)),
