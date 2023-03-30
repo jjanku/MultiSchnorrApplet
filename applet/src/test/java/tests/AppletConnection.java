@@ -58,6 +58,10 @@ public class AppletConnection {
         return curve.decodePoint(data);
     }
 
+    public void kgen() throws CardException {
+        command(Protocol.INS_KGEN, null);
+    }
+
     public PossessedKey dkgen(PossessedKey key) throws CardException {
         byte[] data  = command(Protocol.INS_DKGEN,
             concat(key.point.getEncoded(false), key.pop));

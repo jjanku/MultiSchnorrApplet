@@ -16,6 +16,8 @@ public class MainApplet extends Applet implements MultiSelectable {
     private ECConfig ecc;
     private ECCurve curve;
 
+    private short identityPopLen;
+    private byte[] identityPop;
     private BigNat order, identityPriv, noncePriv, signature;
     private ECPoint identityPub, noncePub, groupPub;
 
@@ -43,6 +45,9 @@ public class MainApplet extends Applet implements MultiSelectable {
         md = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         ecdsa = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
+        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
+        identityPop = new byte[ecdsa.getLength()];
+
         order = new BigNat(curve.r, ecc.rm);
         identityPriv = new BigNat(order.length(),
             JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
@@ -55,7 +60,7 @@ public class MainApplet extends Applet implements MultiSelectable {
         noncePub = new ECPoint(curve, ecc.rm);
         groupPub = new ECPoint(curve, ecc.rm);
 
-        setRandomPoint(identityPriv, identityPub);
+        kgen();
         groupPub.copy(identityPub);
 
         initialized = true;
@@ -80,6 +85,9 @@ public class MainApplet extends Applet implements MultiSelectable {
                     break;
                 case Protocol.INS_GET_GROUP:
                     getGroup(apdu);
+                    break;
+                case Protocol.INS_KGEN:
+                    kgen();
                     break;
                 case Protocol.INS_DKGEN:
                     dkgen(apdu);
@@ -138,11 +146,19 @@ public class MainApplet extends Applet implements MultiSelectable {
     public void deselect(boolean b) {
     }
 
-    private void setRandomPoint(BigNat scalar, ECPoint point) {
+    private void kgen() {
         rng.generateData(ram, (short) 0, order.length());
-        scalar.from_byte_array(order.length(), (short) 0, ram, (short) 0);
-        point.setW(curve.G, (short) 0, curve.POINT_SIZE);
-        point.multiplication(scalar);
+        identityPriv.from_byte_array(order.length(), (short) 0, ram, (short) 0);
+        identityPub.setW(curve.G, (short) 0, curve.POINT_SIZE);
+        identityPub.multiplication(identityPriv);
+
+        identityPub.getW(ram, (short) 0);
+        curve.disposable_priv.setG(curve.G, (short) 0, curve.POINT_SIZE);
+        curve.disposable_priv.setS(identityPriv.as_byte_array(),
+            (short) 0, identityPriv.length());
+        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
+        identityPopLen = ecdsa.sign(ram, (short) 0, curve.POINT_SIZE,
+            identityPop, (short) 0);
     }
 
     private void sendPoint(APDU apdu, ECPoint point) {
@@ -180,14 +196,10 @@ public class MainApplet extends Applet implements MultiSelectable {
         groupPub.multiplication(identityPriv);
 
         identityPub.getW(buf, (short) 0);
-        // TODO: store it in an array?
-        curve.disposable_priv.setG(curve.G, (short) 0, curve.POINT_SIZE);
-        curve.disposable_priv.setS(identityPriv.as_byte_array(),
-            (short) 0, identityPriv.length());
-        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
-        short sigLen = ecdsa.sign(buf, (short) 0, curve.POINT_SIZE,
-            buf, curve.POINT_SIZE);
-        apdu.setOutgoingAndSend((short) 0, (short) (curve.POINT_SIZE + sigLen));
+        Util.arrayCopyNonAtomic(identityPop, (short) 0, buf, curve.POINT_SIZE,
+            (short) identityPopLen);
+        apdu.setOutgoingAndSend(
+            (short) 0, (short) (curve.POINT_SIZE + identityPopLen));
     }
 
     private short commit(byte[] buf, short off, boolean prob) {
