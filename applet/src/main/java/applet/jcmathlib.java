@@ -1667,6 +1667,16 @@ public class jcmathlib {
             short j;
 
             j = (short) (other.size + shift - this.size + start);
+
+            // TODO: what's the expected behavior when start > 0?
+            if (start == 0) {
+                for (short i = 0; i < j; ++i) {
+                    if (other.value[i] != 0) {
+                        return true;
+                    }
+                }
+            }
+
             short this_short, other_short;
             for (short i = start; i < this.size; i++, j++) {
                 this_short = (short) (this.value[i] & digit_mask);
