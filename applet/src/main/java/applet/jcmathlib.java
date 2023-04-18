@@ -2264,23 +2264,22 @@ public class jcmathlib {
         public void mod_mult_rsa_trick(BigNat x, BigNat y, BigNat mod) {
             this.clone(x);
             this.mod_add(y, mod);
-            this.mod_exp2(mod);
 
-            BigNat tmp = rm.BN_D;
-            tmp.clone(x);
-            tmp.mod_exp2(mod);
-            this.mod_sub(tmp, mod);
-
-            tmp.clone(y);
-            tmp.mod_exp2(mod);
-            this.mod_sub(tmp, mod);
-
+            this.deep_resize(mod.size);
             boolean carry = false;
             if(this.is_odd()) {
                 carry = this.add_carry(mod);
             }
-
             this.divide_by_2(carry ? (short) (1 << 7) : (short) 0);
+
+            BigNat tmp = rm.BN_D;
+            tmp.clone(this);
+            tmp.mod_sub(y, mod);
+
+            this.mod_exp2(mod);
+            tmp.mod_exp2(mod);
+
+            this.mod_sub(tmp, mod);
         }
 
         /**
