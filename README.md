@@ -1,208 +1,75 @@
-# JavaCard Template project with Gradle
+# MultiSchnorrApplet
 
-[![Build Status](https://travis-ci.org/ph4r05/javacard-gradle-template.svg?branch=master)](https://travis-ci.org/ph4r05/javacard-gradle-template)
+A JavaCard applet implementing the first party of the MultiSchnorr multi-signature scheme. Use with the [MultiSchnorrReader](https://github.com/jjanku/MultiSchnorrReader/).
 
-This is simple JavaCard project template using Gradle build system.
+Before using the applet with the reader app, it is recommended to run the correctness tests first. Otherwise the app may time out during the applet's initialization on older cards.
 
-You can develop your JavaCard applets and build cap files with the Gradle!
-Moreover the project template enables you to test the applet with [JCardSim] or on the physical cards.
+## Cards
 
-Gradle project contains one module:
+Before attempting to run the applet on a physical card, make sure to set the correct card in [MainApplet](applet/src/main/java/applet/MainApplet.java)'s constructor:
 
-- `applet`: contains the javacard applet. Can be used both for testing and building CAP
+```java
+public MainApplet(byte[] buffer, short offset, byte length) {
+    // ...
+    support.setCard(OperationSupport.SIMULATOR);
+    // ...
+}
+```
 
-Features:
- - Gradle build (CLI / IntelliJ Idea)
- - Build CAP for applets
- - Test applet code in [JCardSim] / physical cards
- - IntelliJ Idea: Coverage
- - Travis support
+The applet was tested on the following cards: `JCOP21`, `JCOP3_P60`, `JCOP4_P71`, `GD60`, and `GD70`. Depending on the JavaCard version supported by the given card, it may be necessary to change `JC_SELECTED` in [build.gradle](applet/build.gradle). In particular, set `JC_SELECTED = JC303` for `JCOP21` and `GD60`.
 
-### Template
-
-The template contains simple Hello World applet generating random bytes on any APDU message received.
-There is also implemented very simple test that sends static APDU command to this applet - in JCardSim.
-
-The Gradle project can be opened and run in the IntelliJ Idea.
-
-Running in IntelliJ Idea gives you a nice benefit: *Coverage*!
-
-## How to use
-
-- Clone this template repository:
+## Build
 
 ```bash
-git clone --recursive https://github.com/ph4r05/javacard-gradle-template.git
+./gradlew buildJavaCard
 ```
 
-- Implement your applet in the `applet` module.
+The built CAP file is located in `./applet/build/javacard`.
 
-- Run Gradle wrapper `./gradlew` on Unix-like system or `./gradlew.bat` on Windows
-to build the project for the first time (Gradle will be downloaded if not installed).
-
-## Building cap
-
-- Setup your Applet ID (`AID`) in the `./applet/build.gradle`.
-
-- Run the `buildJavaCard` task:
-
-```bash
-./gradlew buildJavaCard  --info --rerun-tasks
-```
-
-Generates a new cap file `./applet/out/cap/applet.cap`
-
-Note: `--rerun-tasks` is to force re-run the task even though the cached input/output seems to be up to date.
-
-Typical output:
-
-```
-[ant:cap] [ INFO: ] Converter [v3.0.5]
-[ant:cap] [ INFO: ]     Copyright (c) 1998, 2015, Oracle and/or its affiliates. All rights reserved.
-[ant:cap]
-[ant:cap]
-[ant:cap] [ INFO: ] conversion completed with 0 errors and 0 warnings.
-[ant:verify] XII 10, 2017 10:45:05 ODP.
-[ant:verify] INFO: Verifier [v3.0.5]
-[ant:verify] XII 10, 2017 10:45:05 ODP.
-[ant:verify] INFO:     Copyright (c) 1998, 2015, Oracle and/or its affiliates. All rights reserved.
-[ant:verify]
-[ant:verify]
-[ant:verify] XII 10, 2017 10:45:05 ODP.
-[ant:verify] INFO: Verifying CAP file /Users/dusanklinec/workspace/jcard/applet/out/cap/applet.cap
-[ant:verify] javacard/framework/Applet
-[ant:verify] XII 10, 2017 10:45:05 ODP.
-[ant:verify] INFO: Verification completed with 0 warnings and 0 errors.
-```
-
-## Installation on a card
+## Install
 
 ```bash
 ./gradlew installJavaCard
 ```
 
-Or inspect already installed applets:
+Alternatively, install the CAP file using [GlobalPlatformPro](https://github.com/martinpaljak/GlobalPlatformPro).
+
+## Test
+
+By default, the tests run the applet in a simulator. If a physical card should be used instead, specify it in the test's constructor as follows:
+
+```java
+public Test() throws Exception {
+  setCardType(CardType.PHYSICAL);
+}
+```
+
+Correctness tests ([AppletTest.java](applet/src/test/java/tests/AppletTest.java)):
 
 ```bash
-./gradlew listJavaCard
+./gradlew test --tests AppletTest --rerun-tasks
 ```
 
-## Running tests
+Performance tests ([PerformanceTest.java](applet/src/test/java/tests/PerformanceTest.java)):
 
-```
-./gradlew test --info --rerun-tasks
-```
-
-Output:
-
-```
-Running test: Test method hello(AppletTest)
-
-Gradle suite > Gradle test > AppletTest.hello STANDARD_OUT
-    Connecting to card... Done.
-    --> [00C00000080000000000000000] 13
-    <-- 51373E8B6FDEC284DB569204CA13D2CAA23BD1D85DCAB02A0E3D50461E73F1BB 9000 (32)
-    ResponseAPDU: 34 bytes, SW=9000
+```bash
+./gradlew test --tests PerformanceTest.full --rerun-tasks
 ```
 
-## Dependencies
+If `OperationSupport.EC_HW_XY` is set to `true`, it is sufficient to use `PerformanceTest.noProb`. The `full` test runs slower and provides no new information in this case. However, if you want to test the probabilistic signing optimization, make sure to set `support.EC_HW_XY = false` in [MainApplet](applet/src/main/java/applet/MainApplet.java)'s constructor and run the `full` test.
 
-This project uses mainly:
+The results are saved to `applet/measurements.csv`.
 
-- https://github.com/bertrandmartel/javacard-gradle-plugin
-- https://github.com/martinpaljak/ant-javacard
-- https://github.com/martinpaljak/oracle_javacard_sdks
-- https://github.com/licel/jcardsim
-- Petr Svenda scripts
+## Performance
 
-Kudos for a great work!
+![Performance Overview](perf/img/basic-time-bar.svg)
 
-### JavaCard support
+![Probabilistic Signing Performance](perf/img/prob-time-bar.svg)
 
-Thanks to Martin Paljak's [ant-javacard] and [oracle_javacard_sdks] we support:
+The measured data and their analysis can be found in [perf](perf).
 
-- JavaCard 2.1.2
-- JavaCard 2.2.1
-- JavaCard 2.2.2
-- JavaCard 3.0.3
-- JavaCard 3.0.4
-- JavaCard 3.0.5u1
-- JavaCard 3.1.0b43
-
-## Supported Java versions
-
-Java 8-u271 is the minimal version supported.
-
-Make sure you have up to date java version (`-u` version) as older java 8 versions
-have problems with recognizing some certificates as valid.
-
-Only some Java versions are supported by the JavaCard SDKs.
-Check the following compatibility table for more info:
-https://github.com/martinpaljak/ant-javacard/wiki/Version-compatibility
-
-## Coverage
-
-This is a nice benefit of the IntelliJ Idea - gives you coverage
-results out of the box.
-
-You can see the test coverage on your applet code.
-
-- Go to Gradle plugin in IntelliJ Idea
-- Tasks -> verification -> test
-- Right click - run with coverage.
-
-Coverage summary:
-![coverage summary](https://raw.githubusercontent.com/ph4r05/javacard-gradle-template/master/.github/image/coverage_summary.png)
-
-Coverage code:
-![coverage code](https://raw.githubusercontent.com/ph4r05/javacard-gradle-template/master/.github/image/coverage_class.png)
+To replicate the results, intall the applet on your card and run `PerformanceTest` as described. To analyze them, copy `applet/measurements.csv` to `perf/dava/`, the target file should end with `-x.csv` if `PerformanceTest.full` was used and with `-xy.csv` otherwise (see the structure of the existing files).
 
 ## Troubleshooting
 
-If you experience the following error:
-
-```
-java.lang.VerifyError: Expecting a stackmap frame at branch target 19
-    Exception Details:
-      Location:
-        javacard/framework/APDU.<init>(Z)V @11: ifeq
-      Reason:
-        Expected stackmap frame at this location.
-```
-
-Then try running JVM with `-noverify` option.
-
-In the IntelliJ Idea this can be configured in the top tool bar
-with run configurations combo box -> click -> Edit Configurations -> VM Options.
-
-However, the `com.klinec:jcardsim:3.0.5.11` should not need the `-noverify`.
-
-### Invalid APDU loaded
-
-You may experience error like this: `Invalid APDU loaded. You may have JC API in your classpath before JCardSim. Classpath:`
-
-This error is thrown by JCardSim which tries to load APDU class augmented with another methods. The augmented APDU version is contained in the JCardSim JAR.
-However, if `api_class.jar` from the JavaCard SDK is on the classpath before the JCardSim, this problem occurs. The classpath ordering causes non-augmented version is loaded which prevents JCardSim from correct function.
-
-gradle-javacard-plugin v1.7.4 should fix this error.
-
-If you still experience this in IntelliJ Idea try: open project structure settings -> modules -> applet_test and move JCardSim to the top so it appears first on the classpath.
-This has to be done with each project reload from the Gradle.
-
-## Roadmap
-
-TODOs for this project:
-
-- Polish Gradle build scripts
-- Add basic libraries as maven dependency.
-
-## Contributions
-
-Community feedback is highly appreciated - pull requests are welcome!
-
-
-
-[JCardSim]: https://jcardsim.org/
-[ant-javacard]: https://github.com/martinpaljak/ant-javacard
-[oracle_javacard_sdks]: https://github.com/martinpaljak/oracle_javacard_sdks
-
+See the [javacard-gradle-template](https://github.com/ph4r05/javacard-gradle-template) this project is based on for more information.
