@@ -7,13 +7,13 @@ import javacard.security.RandomData;
 import javacard.security.MessageDigest;
 import javacard.security.Signature;
 
-public class MainApplet extends Applet implements MultiSelectable {
+public class MainApplet extends Applet {
     private byte[] ram;
     private RandomData rng;
     private MessageDigest md;
     private Signature ecdsa;
 
-    private ECConfig ecc;
+    private ResourceManager rm;
     private ECCurve curve;
 
     private short identityPopLen;
@@ -35,9 +35,9 @@ public class MainApplet extends Applet implements MultiSelectable {
     }
 
     private void initialize() {
-        ecc = new ECConfig(SecP256k1.KEY_LENGTH);
-        curve = new ECCurve(false, SecP256k1.p, SecP256k1.a, SecP256k1.b,
-            SecP256k1.G, SecP256k1.r);
+        rm = new ResourceManager((short) 256);
+        curve = new ECCurve(SecP256k1.p, SecP256k1.a, SecP256k1.b,
+            SecP256k1.G, SecP256k1.r, rm);
 
         ram = JCSystem.makeTransientByteArray(curve.POINT_SIZE,
             JCSystem.CLEAR_ON_DESELECT);
@@ -45,20 +45,22 @@ public class MainApplet extends Applet implements MultiSelectable {
         md = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         ecdsa = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
-        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
+        ecdsa.init(curve.disposablePriv, Signature.MODE_SIGN);
         identityPop = new byte[ecdsa.getLength()];
 
-        order = new BigNat(curve.r, ecc.rm);
+        order = new BigNat((short) curve.r.length,
+            JCSystem.MEMORY_TYPE_PERSISTENT, rm);
+        order.fromByteArray(curve.r, (short) 0, (short) curve.r.length);
         identityPriv = new BigNat(order.length(),
-            JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
+            JCSystem.MEMORY_TYPE_PERSISTENT, rm);
         noncePriv = new BigNat(order.length(),
-            JCSystem.MEMORY_TYPE_PERSISTENT, ecc.rm);
-        signature = new BigNat(order.length(),
-            JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, ecc.rm);
+            JCSystem.MEMORY_TYPE_PERSISTENT, rm);
+        signature = new BigNat((short) (order.length() + 1),
+            JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, rm);
 
-        identityPub = new ECPoint(curve, ecc.rm);
-        noncePub = new ECPoint(curve, ecc.rm);
-        groupPub = new ECPoint(curve, ecc.rm);
+        identityPub = new ECPoint(curve);
+        noncePub = new ECPoint(curve);
+        groupPub = new ECPoint(curve);
 
         kgen();
         groupPub.copy(identityPub);
@@ -137,26 +139,23 @@ public class MainApplet extends Applet implements MultiSelectable {
         }
     }
 
-    public boolean select(boolean b) {
-        if (initialized)
-            ecc.refreshAfterReset();
+    public boolean select() {
+        if (curve != null)
+            curve.updateAfterReset();
         return true;
-    }
-
-    public void deselect(boolean b) {
     }
 
     private void kgen() {
         rng.generateData(ram, (short) 0, order.length());
-        identityPriv.from_byte_array(order.length(), (short) 0, ram, (short) 0);
+        identityPriv.fromByteArray(ram, (short) 0, order.length());
         identityPub.setW(curve.G, (short) 0, curve.POINT_SIZE);
         identityPub.multiplication(identityPriv);
 
+        curve.disposablePriv.setG(curve.G, (short) 0, curve.POINT_SIZE);
+        identityPriv.copyToByteArray(ram, (short) 0);
+        curve.disposablePriv.setS(ram, (short) 0, identityPriv.length());
         identityPub.getW(ram, (short) 0);
-        curve.disposable_priv.setG(curve.G, (short) 0, curve.POINT_SIZE);
-        curve.disposable_priv.setS(identityPriv.as_byte_array(),
-            (short) 0, identityPriv.length());
-        ecdsa.init(curve.disposable_priv, Signature.MODE_SIGN);
+        ecdsa.init(curve.disposablePriv, Signature.MODE_SIGN);
         identityPopLen = ecdsa.sign(ram, (short) 0, curve.POINT_SIZE,
             identityPop, (short) 0);
     }
@@ -204,7 +203,7 @@ public class MainApplet extends Applet implements MultiSelectable {
 
     private short commit(byte[] buf, short off, boolean prob) {
         rng.generateData(ram, (short) 0, order.length());
-        noncePriv.from_byte_array(order.length(), (short) 0, ram, (short) 0);
+        noncePriv.fromByteArray(ram, (short) 0, order.length());
         noncePub.setW(curve.G, (short) 0, curve.POINT_SIZE);
         short len;
         if (!OperationSupport.getInstance().EC_HW_XY && prob) {
@@ -250,14 +249,13 @@ public class MainApplet extends Applet implements MultiSelectable {
             ram, (short) 0);
 
         // assert hashLen <= order.length()
-        signature.set_size(hashLen);
-        signature.from_byte_array(hashLen, (short) 0, ram, (short) 0);
-        signature.mod_mult(signature, identityPriv, order);
-        signature.mod_add(noncePriv, order);
+        signature.fromByteArray(ram, (short) 0, hashLen);
+        signature.modMult(signature, identityPriv, order);
+        signature.modAdd(noncePriv, order);
         commited = false;
 
         short len = order.length();
-        signature.prepend_zeros(len, buf, (short) 0);
+        signature.prependZeros(len, buf, (short) 0);
         if (commit)
             len += commit(buf, len, prob);
         apdu.setOutgoingAndSend((short) 0, len);
