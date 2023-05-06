@@ -62,9 +62,9 @@ public class AppletTest extends BaseTest {
         R = ECParams.randomPoint();
         s = app.sign(R, msg);
 
+        md.update(R.getEncoded(false));
         md.update(X.getEncoded(false));
-        md.update(msg);
-        digest = md.digest(R.getEncoded(false));
+        digest = md.digest(msg);
         c = new BigInteger(1, digest);
         assertEquals(ECParams.G.multiply(s), R1.add(pk1.point.multiply(c)));
     }

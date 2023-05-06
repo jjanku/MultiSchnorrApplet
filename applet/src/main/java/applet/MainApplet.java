@@ -241,12 +241,14 @@ public class MainApplet extends Applet {
         noncePub.setW(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
 
         md.reset();
+        md.update(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE);
         groupPub.getW(ram, (short) 0);
         md.update(ram, (short) 0, curve.POINT_SIZE);
-        md.update(buf, (short) (ISO7816.OFFSET_CDATA + curve.POINT_SIZE),
-            Protocol.MSG_LEN);
-        short hashLen = md.doFinal(buf, ISO7816.OFFSET_CDATA, curve.POINT_SIZE,
-            ram, (short) 0);
+        short hashLen = md.doFinal(
+            buf, (short) (ISO7816.OFFSET_CDATA + curve.POINT_SIZE),
+                Protocol.MSG_LEN,
+            ram, (short) 0
+        );
 
         // assert hashLen <= order.length()
         signature.fromByteArray(ram, (short) 0, hashLen);
