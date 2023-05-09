@@ -72,11 +72,9 @@ public class jcmathlib {
         public void sq() {
             if (!OperationSupport.getInstance().RSA_SQ) {
                 BigNat tmp = rm.BN_E;
-                tmp.setSize(this.length());
+                tmp.setSize(length());
                 tmp.copy(this);
-                setSizeToMax(true);
-                super.mult(tmp, tmp);
-                shrink();
+                super.mult(tmp);
                 return;
             }
             if ((short) (rm.MAX_SQ_LENGTH - 1) < (short) (2 * length())) {
@@ -103,40 +101,41 @@ public class jcmathlib {
         }
 
         /**
-         * Computes x * y and stores the result into this.
+         * Computes this * other and stores the result into this.
          */
-        public void mult(BigNat x, BigNat y) {
-            if (OperationSupport.getInstance().RSA_CHECK_ONE && x.isOne()) {
-                clone(y);
+        public void mult(BigNat other) {
+            if (OperationSupport.getInstance().RSA_CHECK_ONE && isOne()) {
+                clone(other);
                 return;
             }
-            if (!OperationSupport.getInstance().RSA_SQ || x.length() <= (short) 16) {
-                setSizeToMax(true);
-                super.mult(x, y);
-                shrink();
+            if (!OperationSupport.getInstance().RSA_SQ || length() <= (short) 16) {
+                super.mult(other);
                 return;
             }
 
             BigNat result = rm.BN_F;
             BigNat tmp = rm.BN_G;
 
-            result.clone(x);
-            result.add(y);
+            result.setSize((short) ((length() > other.length() ? length() : other.length()) + 1));
+            result.copy(this);
+            result.add(other);
             result.sq();
 
-            if (x.isLesser(y)) {
-                tmp.clone(y);
-                tmp.subtract(x);
+            if (isLesser(other)) {
+                tmp.clone(other);
+                tmp.subtract(this);
             } else {
-                tmp.clone(x);
-                tmp.subtract(y);
+                tmp.clone(this);
+                tmp.subtract(other);
             }
             tmp.sq();
 
             result.subtract(tmp);
             result.shiftRight((short) 2);
 
+            setSizeToMax(false);
             copy(result);
+            shrink();
         }
 
         /**
@@ -282,27 +281,25 @@ public class jcmathlib {
         }
 
         /**
-         * Multiplication of BigNats x and y computed modulo mod. The result is stored to this.
+         * Multiplication of this and other modulo mod. The result is stored to this.
          */
-        public void modMult(BigNat x, BigNat y, BigNat mod) {
+        public void modMult(BigNat other, BigNat mod) {
             BigNat tmp = rm.BN_D;
             BigNat result = rm.BN_E;
 
-            setSize(mod.length());
-            if (OperationSupport.getInstance().RSA_CHECK_ONE && x.isOne()) {
-                copy(y);
+            if (OperationSupport.getInstance().RSA_CHECK_ONE && isOne()) {
+                copy(other);
                 return;
             }
 
-            if (!OperationSupport.getInstance().RSA_SQ) {
-                result.setSizeToMax(false);
-                result.mult(x, y);
+            if (!OperationSupport.getInstance().RSA_SQ || OperationSupport.getInstance().RSA_EXTRA_MOD) {
+                result.clone(this);
+                result.mult(other);
                 result.mod(mod);
             } else {
-                result.clone(x);
-                result.modAdd(y, mod);
+                result.clone(this);
+                result.modAdd(other, mod);
 
-                result.resize(mod.length());
                 short carry = (byte) 0;
                 if (result.isOdd()) {
                     carry = result.add(mod);
@@ -310,13 +307,14 @@ public class jcmathlib {
                 result.shiftRight((short) 1, carry);
 
                 tmp.clone(result);
-                tmp.modSub(y, mod);
+                tmp.modSub(other, mod);
 
                 result.modSq(mod);
                 tmp.modSq(mod);
 
                 result.modSub(tmp, mod);
             }
+            setSize(mod.length());
             copy(result);
         }
 
@@ -327,7 +325,7 @@ public class jcmathlib {
             if (OperationSupport.getInstance().RSA_SQ) {
                 modExp(ResourceManager.TWO, mod);
             } else {
-                modMult(this, this, mod);
+                modMult(this, mod);
             }
         }
 
@@ -361,7 +359,8 @@ public class jcmathlib {
                 s.increment();
                 // TODO replace with modMult(s, q, p)
                 tmp.setSizeToMax(false);
-                tmp.mult(s, q);
+                tmp.clone(s);
+                tmp.mult(q);
                 tmp.mod(p);
                 tmp.shrink();
             }
@@ -396,33 +395,20 @@ public class jcmathlib {
      */
     public static class BigNatInternal {
         protected final ResourceManager rm;
-        private final boolean ALLOW_RUNTIME_REALLOCATION = false;
         private static final short DIGIT_MASK = 0xff, DIGIT_LEN = 8, DOUBLE_DIGIT_LEN = 16, POSITIVE_DOUBLE_DIGIT_MASK = 0x7fff;
 
         private byte[] value;
         private short size; // The current size of internal representation in bytes.
         private short offset;
-        private byte allocatorType;
 
         /**
-         * Construct a BigNat of a given size in bytes.
+         * Construct a BigNat of at least a given size in bytes.
          */
         public BigNatInternal(short size, byte allocatorType, ResourceManager rm) {
             this.rm = rm;
-            allocateStorageArray(size, allocatorType);
-        }
-
-        /**
-         * Allocates required underlying storage array.
-         *
-         * @param maxSize maximum size of this BigNat in bytes
-         * @param allocatorType type of allocator storage
-         */
-        private void allocateStorageArray(short maxSize, byte allocatorType) {
-            this.offset = 0;
-            this.size = maxSize;
-            this.allocatorType = allocatorType;
-            this.value = rm.memAlloc.allocateByteArray(maxSize, allocatorType);
+            this.offset = 1;
+            this.size = size;
+            this.value = rm.memAlloc.allocateByteArray((short) (size + 1), allocatorType);
         }
 
         /**
@@ -495,10 +481,7 @@ public class jcmathlib {
          */
         public void resize(short newSize) {
             if (newSize > (short) value.length) {
-                if (!ALLOW_RUNTIME_REALLOCATION) {
-                    ISOException.throwIt(ReturnCodes.SW_BIGNAT_REALLOCATIONNOTALLOWED);
-                }
-                allocateStorageArray(newSize, allocatorType);
+                ISOException.throwIt(ReturnCodes.SW_BIGNAT_REALLOCATIONNOTALLOWED);
             }
 
             short diff = (short) (newSize - size);
@@ -617,10 +600,7 @@ public class jcmathlib {
          */
         public void clone(BigNatInternal other) {
             if (other.size > (short) value.length) {
-                if (!ALLOW_RUNTIME_REALLOCATION) {
-                    ISOException.throwIt(ReturnCodes.SW_BIGNAT_REALLOCATIONNOTALLOWED);
-                }
-                allocateStorageArray(other.length(), allocatorType);
+                ISOException.throwIt(ReturnCodes.SW_BIGNAT_REALLOCATIONNOTALLOWED);
             }
 
             short diff = (short) ((short) value.length - other.size);
@@ -841,15 +821,16 @@ public class jcmathlib {
         }
 
         /**
-         * Multiplies x and y using software multiplications and stores results into this.
-         *
-         * @param x left operand
-         * @param y right operand
+         * Multiplies this and other using software multiplications and stores results into this.
          */
-        public void mult(BigNatInternal x, BigNatInternal y) {
-            for (short i = (short) (y.value.length - 1); i >= y.offset; i--) {
-                add(x, (short) (y.value.length - 1 - i), (short) (y.value[i] & DIGIT_MASK));
+        public void mult(BigNatInternal other) {
+            BigNatInternal tmp = rm.BN_F;
+            tmp.clone(this);
+            setSizeToMax(true);
+            for (short i = (short) (other.value.length - 1); i >= other.offset; i--) {
+                add(tmp, (short) (other.value.length - 1 - i), (short) (other.value[i] & DIGIT_MASK));
             }
+            shrink();
         }
 
         /**
@@ -1248,13 +1229,13 @@ public class jcmathlib {
 
             lambda.clone(pX);
             lambda.modSq(curve.pBN);
-            lambda.modMult(lambda, ResourceManager.THREE, curve.pBN);
+            lambda.modMult(ResourceManager.THREE, curve.pBN);
             lambda.modAdd(curve.aBN, curve.pBN);
 
             tmp.clone(pY);
             tmp.modAdd(tmp, curve.pBN);
             tmp.modInv(curve.pBN);
-            lambda.modMult(lambda, tmp, curve.pBN);
+            lambda.modMult(tmp, curve.pBN);
             tmp.clone(lambda);
             tmp.modSq(curve.pBN);
             tmp.modSub(pX, curve.pBN);
@@ -1262,7 +1243,7 @@ public class jcmathlib {
             tmp.prependZeros(curve.COORD_SIZE, pointBuffer, (short) 1);
 
             tmp.modSub(pX, curve.pBN);
-            tmp.modMult(tmp, lambda, curve.pBN);
+            tmp.modMult(lambda, curve.pBN);
             tmp.modAdd(pY, curve.pBN);
             tmp.modNegate(curve.pBN);
             tmp.prependZeros(curve.COORD_SIZE, pointBuffer, (short) (1 + curve.COORD_SIZE));
@@ -1333,11 +1314,11 @@ public class jcmathlib {
                 // (3(x_p^2)+a)
                 nominator.clone(xP);
                 nominator.modSq(curve.pBN);
-                nominator.modMult(nominator, ResourceManager.THREE, curve.pBN);
+                nominator.modMult(ResourceManager.THREE, curve.pBN);
                 nominator.modAdd(curve.aBN, curve.pBN);
                 // (2y_p)
                 denominator.clone(yP);
-                denominator.modMult(yP, ResourceManager.TWO, curve.pBN);
+                denominator.modMult(ResourceManager.TWO, curve.pBN);
                 denominator.modInv(curve.pBN);
 
             } else {
@@ -1359,9 +1340,8 @@ public class jcmathlib {
                 denominator.modInv(curve.pBN);
             }
 
-            lambda.setSizeToMax(false);
-            lambda.zero();
-            lambda.modMult(nominator, denominator, curve.pBN);
+            lambda.clone(nominator);
+            lambda.modMult(denominator, curve.pBN);
 
             // (x_p, y_p) + (x_q, y_q) = (x_r, y_r)
             // lambda = (y_q - y_p) / (x_q - x_p)
@@ -1380,7 +1360,7 @@ public class jcmathlib {
             // y_r = lambda(x_p - x_r) - y_p
             yR.clone(xP);
             yR.modSub(xR, curve.pBN);
-            yR.modMult(yR, lambda, curve.pBN);
+            yR.modMult(lambda, curve.pBN);
             yR.modSub(yP, curve.pBN);
 
             pointBuffer[0] = (byte) 0x04;
@@ -1526,7 +1506,7 @@ public class jcmathlib {
             ySq.clone(x);
             ySq.modExp(ResourceManager.TWO, curve.pBN);
             ySq.modAdd(curve.aBN, curve.pBN);
-            ySq.modMult(ySq, x, curve.pBN);
+            ySq.modMult(x, curve.pBN);
             ySq.modAdd(curve.bBN, curve.pBN);
             y1.clone(ySq);
             y1.modSqrt(curve.pBN);
@@ -1616,17 +1596,17 @@ public class jcmathlib {
          * @param x the x coordinate
          */
         private void fromX(BigNat x) {
-            BigNat y_sq = rm.EC_BN_C;
+            BigNat ySq = rm.EC_BN_C;
             BigNat y = rm.EC_BN_D;
             byte[] pointBuffer = rm.POINT_ARRAY_A;
 
             //Y^2 = X^3 + XA + B = x(x^2+A)+B
-            y_sq.clone(x);
-            y_sq.modSq(curve.pBN);
-            y_sq.modAdd(curve.aBN, curve.pBN);
-            y_sq.modMult(y_sq, x, curve.pBN);
-            y_sq.modAdd(curve.bBN, curve.pBN);
-            y.clone(y_sq);
+            ySq.clone(x);
+            ySq.modSq(curve.pBN);
+            ySq.modAdd(curve.aBN, curve.pBN);
+            ySq.modMult(x, curve.pBN);
+            ySq.modAdd(curve.bBN, curve.pBN);
+            y.clone(ySq);
             y.modSqrt(curve.pBN);
 
             // Construct public key with <x, y_1>
@@ -1709,7 +1689,7 @@ public class jcmathlib {
                 y.clone(x);
                 y.modSq(curve.pBN);
                 y.modAdd(curve.aBN, curve.pBN);
-                y.modMult(y, x, curve.pBN);
+                y.modMult(x, curve.pBN);
                 y.modAdd(curve.bBN, curve.pBN);
                 y.modSqrt(curve.pBN);
 
@@ -1759,7 +1739,7 @@ public class jcmathlib {
                 y.clone(x);
                 y.modSq(curve.pBN);
                 y.modAdd(curve.aBN, curve.pBN);
-                y.modMult(y, x, curve.pBN);
+                y.modMult(x, curve.pBN);
                 y.modAdd(curve.bBN, curve.pBN);
                 y.modSqrt(curve.pBN);
                 boolean odd = y.isOdd();
@@ -2153,8 +2133,8 @@ public class jcmathlib {
             }
             MAX_SQ_LENGTH = (short) (MAX_SQ_BIT_LENGTH / 8);
             MAX_EXP_LENGTH = (short) (MAX_EXP_BIT_LENGTH / 8);
-            MAX_BIGNAT_SIZE = (short) ((short) (MAX_EXP_BIT_LENGTH / 8) + 1);
-            MAX_COORD_SIZE = (short) ((short) (MAX_POINT_SIZE / 2) + 1);
+            MAX_BIGNAT_SIZE = (short) (MAX_EXP_BIT_LENGTH / 8);
+            MAX_COORD_SIZE = (short) (MAX_POINT_SIZE / 2);
 
             memAlloc = new ObjectAllocator();
             memAlloc.setAllAllocatorsRAM();
@@ -2193,7 +2173,6 @@ public class jcmathlib {
             THREE = new BigNat((short) 1, JCSystem.MEMORY_TYPE_PERSISTENT, this);
             THREE.setValue((byte) 3);
             ONE_COORD = new BigNat(MAX_COORD_SIZE, JCSystem.MEMORY_TYPE_PERSISTENT, this);
-            ONE_COORD.setSize((short) (MAX_POINT_SIZE / 2));
             ONE_COORD.setValue((byte) 1);
             // ECC Helpers
             if (OperationSupport.getInstance().EC_HW_XY) {

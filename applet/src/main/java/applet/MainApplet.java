@@ -55,7 +55,7 @@ public class MainApplet extends Applet {
             JCSystem.MEMORY_TYPE_PERSISTENT, rm);
         noncePriv = new BigNat(order.length(),
             JCSystem.MEMORY_TYPE_PERSISTENT, rm);
-        signature = new BigNat((short) (order.length() + 1),
+        signature = new BigNat(order.length(),
             JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT, rm);
 
         identityPub = new ECPoint(curve);
@@ -254,7 +254,7 @@ public class MainApplet extends Applet {
 
         // assert hashLen <= order.length()
         signature.fromByteArray(ram, (short) 0, hashLen);
-        signature.modMult(signature, identityPriv, order);
+        signature.modMult(identityPriv, order);
         signature.modAdd(noncePriv, order);
         commited = false;
 
