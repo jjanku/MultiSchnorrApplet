@@ -63,7 +63,6 @@ public class MainApplet extends Applet {
         groupPub = new ECPoint(curve);
 
         kgen();
-        groupPub.copy(identityPub);
 
         initialized = true;
     }
@@ -158,6 +157,9 @@ public class MainApplet extends Applet {
         ecdsa.init(curve.disposablePriv, Signature.MODE_SIGN);
         identityPopLen = ecdsa.sign(ram, (short) 0, curve.POINT_SIZE,
             identityPop, (short) 0);
+
+        groupPub.copy(identityPub);
+        commited = false;
     }
 
     private void sendPoint(APDU apdu, ECPoint point) {
