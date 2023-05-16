@@ -30,6 +30,8 @@ public class MainApplet extends Applet {
     public MainApplet(byte[] buffer, short offset, byte length) {
         OperationSupport support = OperationSupport.getInstance();
         support.setCard(OperationSupport.SIMULATOR);
+        // uncomment to test probabilistic signing
+        // support.EC_HW_XY = false;
         if (!support.DEFERRED_INITIALIZATION)
             initialize();
     }
